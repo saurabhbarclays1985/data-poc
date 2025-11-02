@@ -1,96 +1,188 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Portfolio for data engineering products"
+Description: "Service Catalog portfolio for data / app domain (SNS, SQS, Lambda, Glue, Step Functions, EventBridge)"
 
 Parameters:
-  LaunchRoleArn: { Type: String }
-  UrlSns:  { Type: String }
-  UrlSqs:  { Type: String }
-  UrlLbd:  { Type: String }
-  UrlGlue: { Type: String }
-  UrlStep: { Type: String }
-  UrlEvb:  { Type: String }
+  LaunchRoleArn:
+    Type: String
+    Description: IAM role that Service Catalog will assume to launch the products
+
+  UrlSns:
+    Type: String
+    Description: S3 URL to the SNS product_template.yaml
+
+  UrlSqs:
+    Type: String
+    Description: S3 URL to the SQS product_template.yaml
+
+  UrlLbd:
+    Type: String
+    Description: S3 URL to the Lambda product_template.yaml
+
+  UrlGlue:
+    Type: String
+    Description: S3 URL to the Glue product_template.yaml
+
+  UrlStep:
+    Type: String
+    Description: S3 URL to the Step Functions product_template.yaml
+
+  UrlEvb:
+    Type: String
+    Description: S3 URL to the EventBridge Rule product_template.yaml
 
 Resources:
-  Portfolio:
+
+  # 1) Portfolio
+  DataPortfolio:
     Type: AWS::ServiceCatalog::Portfolio
     Properties:
-      DisplayName: "Data Eng Portfolio"
+      DisplayName: "Data/DE Components"
+      Description: "Common data engineering components (SNS, SQS, Lambda, Glue, StepFn, EventBridge)"
       ProviderName: "Platform Team"
 
-  ProdSns:
+  # 2) Products (6 of them)
+
+  SnsProduct:
     Type: AWS::ServiceCatalog::CloudFormationProduct
     Properties:
       Name: "SNS Topic"
       Owner: "Platform Team"
+      Description: "SNS topic for app/data events"
       ProvisioningArtifactParameters:
-        - Name: v1.0.0
-          Info: { LoadTemplateFromURL: !Ref UrlSns }
+        - Name: "v1"
+          Info:
+            LoadTemplateFromURL: !Ref UrlSns
+      SupportDescription: "Contact platform"
+      SupportEmail: "platform@example.com"
 
-  ProdSqs:
+  SqsProduct:
     Type: AWS::ServiceCatalog::CloudFormationProduct
     Properties:
       Name: "SQS Queue"
       Owner: "Platform Team"
+      Description: "SQS queue for ingestion"
       ProvisioningArtifactParameters:
-        - Name: v1.0.0
-          Info: { LoadTemplateFromURL: !Ref UrlSqs }
+        - Name: "v1"
+          Info:
+            LoadTemplateFromURL: !Ref UrlSqs
 
-  ProdLbd:
+  LambdaProduct:
     Type: AWS::ServiceCatalog::CloudFormationProduct
     Properties:
       Name: "Lambda Function"
       Owner: "Platform Team"
+      Description: "Lambda function with S3-based code"
       ProvisioningArtifactParameters:
-        - Name: v1.0.0
-          Info: { LoadTemplateFromURL: !Ref UrlLbd }
+        - Name: "v1"
+          Info:
+            LoadTemplateFromURL: !Ref UrlLbd
 
-  ProdGlue:
+  GlueProduct:
     Type: AWS::ServiceCatalog::CloudFormationProduct
     Properties:
       Name: "Glue Job"
       Owner: "Platform Team"
+      Description: "Glue ETL/ELT job"
       ProvisioningArtifactParameters:
-        - Name: v1.0.0
-          Info: { LoadTemplateFromURL: !Ref UrlGlue }
+        - Name: "v1"
+          Info:
+            LoadTemplateFromURL: !Ref UrlGlue
 
-  ProdStep:
+  StepFnProduct:
     Type: AWS::ServiceCatalog::CloudFormationProduct
     Properties:
-      Name: "Step Functions Orchestrator"
+      Name: "Step Functions Workflow"
       Owner: "Platform Team"
+      Description: "Simple state machine for data pipeline"
       ProvisioningArtifactParameters:
-        - Name: v1.0.0
-          Info: { LoadTemplateFromURL: !Ref UrlStep }
+        - Name: "v1"
+          Info:
+            LoadTemplateFromURL: !Ref UrlStep
 
-  ProdEvb:
+  EventBridgeProduct:
     Type: AWS::ServiceCatalog::CloudFormationProduct
     Properties:
-      Name: "EventBridge Trigger"
+      Name: "EventBridge Rule"
       Owner: "Platform Team"
+      Description: "EventBridge rule to trigger pipelines"
       ProvisioningArtifactParameters:
-        - Name: v1.0.0
-          Info: { LoadTemplateFromURL: !Ref UrlEvb }
+        - Name: "v1"
+          Info:
+            LoadTemplateFromURL: !Ref UrlEvb
 
-  # Associate and apply launch role
-  A1: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSns } }
-  A2: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSqs } }
-  A3: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdLbd } }
-  A4: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdGlue } }
-  A5: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdStep } }
-  A6: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdEvb } }
+  # 3) Associate all products to the portfolio
 
-  C1: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSns,  RoleArn: !Ref LaunchRoleArn } }
-  C2: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSqs,  RoleArn: !Ref LaunchRoleArn } }
-  C3: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdLbd,  RoleArn: !Ref LaunchRoleArn } }
-  C4: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdGlue, RoleArn: !Ref LaunchRoleArn } }
-  C5: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdStep, RoleArn: !Ref LaunchRoleArn } }
-  C6: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdEvb,  RoleArn: !Ref LaunchRoleArn } }
+  AssocSns:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId: !Ref DataPortfolio
+      ProductId:  !Ref SnsProduct
+
+  AssocSqs:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId: !Ref DataPortfolio
+      ProductId:  !Ref SqsProduct
+
+  AssocLambda:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId: !Ref DataPortfolio
+      ProductId:  !Ref LambdaProduct
+
+  AssocGlue:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId: !Ref DataPortfolio
+      ProductId:  !Ref GlueProduct
+
+  AssocStepFn:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId: !Ref DataPortfolio
+      ProductId:  !Ref StepFnProduct
+
+  AssocEventBridge:
+    Type: AWS::ServiceCatalog::PortfolioProductAssociation
+    Properties:
+      PortfolioId: !Ref DataPortfolio
+      ProductId:  !Ref EventBridgeProduct
+
+  # 4) Give the launch role to the portfolio
+  #    (so Service Catalog can actually launch these)
+
+  PortfolioLaunchRole:
+    Type: AWS::ServiceCatalog::PortfolioPrincipalAssociation
+    Properties:
+      PortfolioId: !Ref DataPortfolio
+      PrincipalARN: !Ref LaunchRoleArn
+      PrincipalType: IAM
 
 Outputs:
-  PortfolioId:   { Value: !Ref Portfolio }
-  SnsProductId:  { Value: !Ref ProdSns }
-  SqsProductId:  { Value: !Ref ProdSqs }
-  LambdaProductId:{ Value: !Ref ProdLbd }
-  GlueProductId: { Value: !Ref ProdGlue }
-  StepFnProductId:{ Value: !Ref ProdStep }
-  EvbProductId:  { Value: !Ref ProdEvb }
+  PortfolioId:
+    Description: "ID of the portfolio"
+    Value: !Ref DataPortfolio
+
+  SnsProductId:
+    Description: "SNS product ID"
+    Value: !Ref SnsProduct
+
+  SqsProductId:
+    Description: "SQS product ID"
+    Value: !Ref SqsProduct
+
+  LambdaProductId:
+    Description: "Lambda product ID"
+    Value: !Ref LambdaProduct
+
+  GlueProductId:
+    Description: "Glue product ID"
+    Value: !Ref GlueProduct
+
+  StepFnProductId:
+    Description: "Step Functions product ID"
+    Value: !Ref StepFnProduct
+
+  EvbProductId:
+    Description: "EventBridge product ID"
+    Value: !Ref EventBridgeProduct
