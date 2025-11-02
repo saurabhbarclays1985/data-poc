@@ -37,7 +37,6 @@ pipeline {
           aws s3 cp cloud/app-domain/products/product-stepfn/product_template.yaml           s3://$ARTIFACT_BUCKET/products/product-stepfn/product_template.yaml
           aws s3 cp cloud/app-domain/products/product-eventbridge-rule/product_template.yaml s3://$ARTIFACT_BUCKET/products/product-eventbridge-rule/product_template.yaml
 
-          # code
           aws s3 cp "$WORKSPACE/out/lambda_producer.zip"  s3://$ARTIFACT_BUCKET/code/lambda_producer.zip
           aws s3 cp "$WORKSPACE/out/lambda_consumer.zip"  s3://$ARTIFACT_BUCKET/code/lambda_consumer.zip
           aws s3 cp cloud/app-domain/code/glue/elt_job.py s3://$ARTIFACT_BUCKET/code/elt_job.py
@@ -48,28 +47,31 @@ pipeline {
 
     stage('Deploy portfolio') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
-          sh """
-          SNS_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-sns-topic/product_template.yaml
-          SQS_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-sqs-queue/product_template.yaml
-          LBD_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-lambda-fn/product_template.yaml
-          GLU_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-glue-job/product_template.yaml
-          SFN_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-stepfn/product_template.yaml
-          EVB_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-eventbridge-rule/product_template.yaml
+        script {
+          // build URLs in Groovy first
+          def snsUrl = "https://s3.${env.AWS_DEFAULT_REGION}.amazonaws.com/${env.ARTIFACT_BUCKET}/products/product-sns-topic/product_template.yaml"
+          def sqsUrl = "https://s3.${env.AWS_DEFAULT_REGION}.amazonaws.com/${env.ARTIFACT_BUCKET}/products/product-sqs-queue/product_template.yaml"
+          def lbdUrl = "https://s3.${env.AWS_DEFAULT_REGION}.amazonaws.com/${env.ARTIFACT_BUCKET}/products/product-lambda-fn/product_template.yaml"
+          def gluUrl = "https://s3.${env.AWS_DEFAULT_REGION}.amazonaws.com/${env.ARTIFACT_BUCKET}/products/product-glue-job/product_template.yaml"
+          def sfnUrl = "https://s3.${env.AWS_DEFAULT_REGION}.amazonaws.com/${env.ARTIFACT_BUCKET}/products/product-stepfn/product_template.yaml"
+          def evbUrl = "https://s3.${env.AWS_DEFAULT_REGION}.amazonaws.com/${env.ARTIFACT_BUCKET}/products/product-eventbridge-rule/product_template.yaml"
 
-          aws cloudformation deploy \
-            --stack-name $PORTFOLIO_STACK \
-            --template-file cloud/app-domain/portfolio/portfolio.yml \
-            --parameter-overrides \
-              LaunchRoleArn=$LAUNCH_ROLE_ARN \
-              UrlSns=$SNS_URL \
-              UrlSqs=$SQS_URL \
-              UrlLbd=$LBD_URL \
-              UrlGlue=$GLU_URL \
-              UrlStep=$SFN_URL \
-              UrlEvb=$EVB_URL \
-            --capabilities CAPABILITY_NAMED_IAM
-          """
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
+            sh """
+            aws cloudformation deploy \
+              --stack-name ${env.PORTFOLIO_STACK} \
+              --template-file cloud/app-domain/portfolio/portfolio.yml \
+              --parameter-overrides \
+                LaunchRoleArn=${env.LAUNCH_ROLE_ARN} \
+                UrlSns=${snsUrl} \
+                UrlSqs=${sqsUrl} \
+                UrlLbd=${lbdUrl} \
+                UrlGlue=${gluUrl} \
+                UrlStep=${sfnUrl} \
+                UrlEvb=${evbUrl} \
+              --capabilities CAPABILITY_NAMED_IAM
+            """
+          }
         }
       }
     }
