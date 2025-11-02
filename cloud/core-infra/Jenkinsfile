@@ -9,26 +9,35 @@ pipeline {
     stage('Checkout') {
       steps { checkout scm }
     }
+
     stage('Deploy core network') {
       steps {
         sh """
         aws cloudformation deploy \
-          --stack-name $CORE_STACK \
+          --stack-name ${CORE_STACK} \
           --template-file cloud/core-infra/templates/core-network.yml \
-          --parameter-overrides file://cloud/core-infra/params/dev.json
+          --parameter-overrides \
+            VpcCidr=10.30.0.0/16 \
+            PublicSubnet1Cidr=10.30.10.0/24 \
+            PrivateSubnet1Cidr=10.30.20.0/24
         """
       }
     }
+
     stage('Publish SSM') {
       steps {
         sh '''
         VPC=$(aws cloudformation describe-stacks --stack-name poc-core-network-dev --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" --output text)
         PUB=$(aws cloudformation describe-stacks --stack-name poc-core-network-dev --query "Stacks[0].Outputs[?OutputKey=='PublicSubnet1Id'].OutputValue" --output text)
         PRI=$(aws cloudformation describe-stacks --stack-name poc-core-network-dev --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
+
         aws cloudformation deploy \
           --stack-name poc-core-outputs-dev \
           --template-file cloud/core-infra/templates/core-outputs.yml \
-          --parameter-overrides VpcId=$VPC PublicSubnet1Id=$PUB PrivateSubnet1Id=$PRI
+          --parameter-overrides \
+            VpcId=$VPC \
+            PublicSubnet1Id=$PUB \
+            PrivateSubnet1Id=$PRI
         '''
       }
     }
