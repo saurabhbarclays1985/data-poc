@@ -2,8 +2,10 @@ pipeline {
   agent any
   environment {
     AWS_DEFAULT_REGION = 'ap-south-1'
-    ARTIFACT_BUCKET = 'my-cfn-artifacts-ap-south-1'
-    PORTFOLIO_STACK = 'poc-data-portfolio-dev'
+    ARTIFACT_BUCKET    = 'my-cfn-artifacts-ap-south-1'
+    PORTFOLIO_STACK    = 'poc-data-portfolio-dev'
+    // put your actual role ARN here
+    LAUNCH_ROLE_ARN    = 'arn:aws:iam::145411222814:role/ServiceCatalogProvisioningRole'
   }
   stages {
     stage('Checkout') {
@@ -56,8 +58,13 @@ pipeline {
             --stack-name $PORTFOLIO_STACK \
             --template-file cloud/app-domain/portfolio/portfolio.yml \
             --parameter-overrides \
-              file://cloud/app-domain/params/portfolio.json \
-              UrlSns=$SNS_URL UrlSqs=$SQS_URL UrlLbd=$LBD_URL UrlGlue=$GLU_URL UrlStep=$SFN_URL UrlEvb=$EVB_URL \
+              LaunchRoleArn=$LAUNCH_ROLE_ARN \
+              UrlSns=$SNS_URL \
+              UrlSqs=$SQS_URL \
+              UrlLbd=$LBD_URL \
+              UrlGlue=$GLU_URL \
+              UrlStep=$SFN_URL \
+              UrlEvb=$EVB_URL \
             --capabilities CAPABILITY_NAMED_IAM
           """
         }
