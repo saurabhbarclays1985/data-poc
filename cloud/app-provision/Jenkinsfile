@@ -4,12 +4,17 @@ pipeline {
     AWS_DEFAULT_REGION = 'ap-south-1'
     PORTFOLIO_STACK    = 'poc-data-portfolio-dev'
     PROVISION_STACK    = 'poc-data-provision-dev'
+
+    // the role we already associated to the portfolio in pipeline 2
+    SC_LAUNCH_ROLE_ARN = 'arn:aws:iam::145411222814:role/ServiceCatalogProvisioningRole'
   }
   stages {
+
     stage('Checkout') {
       steps { checkout scm }
     }
 
+    // 1) make sure core-infra SSM params exist (this still uses base Jenkins creds)
     stage('Pre-flight core (check SSM)') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
@@ -22,9 +27,49 @@ pipeline {
       }
     }
 
-    stage('Read product IDs from portfolio') {
+    // 2) assume the SC launch role → we'll use these creds for *everything* after this
+    stage('Assume SC launch role') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
+          script {
+            // ask STS for temporary creds
+            def out = sh(
+              returnStdout: true,
+              script: """
+                aws sts assume-role \
+                  --role-arn ${SC_LAUNCH_ROLE_ARN} \
+                  --role-session-name sc-provision-session \
+                  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                  --output text
+              """
+            ).trim()
+
+            // out will look like: "AKIA.... secret... token..."
+            def parts = out.split("\\s+")
+            if (parts.size() < 3) {
+              error "Failed to assume role ${SC_LAUNCH_ROLE_ARN}"
+            }
+
+            env.ASSUMED_AWS_ACCESS_KEY_ID     = parts[0]
+            env.ASSUMED_AWS_SECRET_ACCESS_KEY = parts[1]
+            env.ASSUMED_AWS_SESSION_TOKEN     = parts[2]
+
+            echo "✅ Assumed role ${SC_LAUNCH_ROLE_ARN}"
+          }
+        }
+      }
+    }
+
+    // 3) read product IDs from portfolio using the ASSUMED creds
+    stage('Read product IDs from portfolio') {
+      steps {
+        // use the assumed credentials for all aws calls in this stage
+        withEnv([
+          "AWS_ACCESS_KEY_ID=${env.ASSUMED_AWS_ACCESS_KEY_ID}",
+          "AWS_SECRET_ACCESS_KEY=${env.ASSUMED_AWS_SECRET_ACCESS_KEY}",
+          "AWS_SESSION_TOKEN=${env.ASSUMED_AWS_SESSION_TOKEN}",
+          "AWS_DEFAULT_REGION=${env.AWS_DEFAULT_REGION}"
+        ]) {
           script {
             env.SNS_ID = sh(returnStdout: true, script: """
               aws cloudformation describe-stacks --stack-name ${PORTFOLIO_STACK} \
@@ -71,22 +116,28 @@ pipeline {
             if (!env.EVB_ID || env.EVB_ID == "None")  error("EventBridge product id missing from portfolio")
 
             echo """
-            🟢 Product IDs read from stack ${PORTFOLIO_STACK}:
-              SNS  = ${env.SNS_ID}
-              SQS  = ${env.SQS_ID}
-              LAMBDA = ${env.LBD_ID}
-              GLUE   = ${env.GLU_ID}
-              STEP FN= ${env.SFN_ID}
-              EVB    = ${env.EVB_ID}
+            ✅ Product IDs (from ${PORTFOLIO_STACK}):
+              SNS   = ${env.SNS_ID}
+              SQS   = ${env.SQS_ID}
+              LAMBDA= ${env.LBD_ID}
+              GLUE  = ${env.GLU_ID}
+              STEP  = ${env.SFN_ID}
+              EVB   = ${env.EVB_ID}
             """
           }
         }
       }
     }
 
+    // 4) deploy the provision stack USING the assumed creds
     stage('Deploy provision stack') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
+        withEnv([
+          "AWS_ACCESS_KEY_ID=${env.ASSUMED_AWS_ACCESS_KEY_ID}",
+          "AWS_SECRET_ACCESS_KEY=${env.ASSUMED_AWS_SECRET_ACCESS_KEY}",
+          "AWS_SESSION_TOKEN=${env.ASSUMED_AWS_SESSION_TOKEN}",
+          "AWS_DEFAULT_REGION=${env.AWS_DEFAULT_REGION}"
+        ]) {
           sh """
           aws cloudformation deploy \
             --stack-name ${PROVISION_STACK} \
@@ -108,9 +159,15 @@ pipeline {
       }
     }
 
+    // 5) show outputs (still with assumed creds)
     stage('Show outputs') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
+        withEnv([
+          "AWS_ACCESS_KEY_ID=${env.ASSUMED_AWS_ACCESS_KEY_ID}",
+          "AWS_SECRET_ACCESS_KEY=${env.ASSUMED_AWS_SECRET_ACCESS_KEY}",
+          "AWS_SESSION_TOKEN=${env.ASSUMED_AWS_SESSION_TOKEN}",
+          "AWS_DEFAULT_REGION=${env.AWS_DEFAULT_REGION}"
+        ]) {
           sh """
           aws cloudformation describe-stacks \
             --stack-name ${PROVISION_STACK} \
