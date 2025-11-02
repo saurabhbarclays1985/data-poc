@@ -4,7 +4,6 @@ pipeline {
     AWS_DEFAULT_REGION = 'ap-south-1'
     ARTIFACT_BUCKET    = 'my-cfn-artifacts-ap-south-1'
     PORTFOLIO_STACK    = 'poc-data-portfolio-dev'
-    // put your actual role ARN here
     LAUNCH_ROLE_ARN    = 'arn:aws:iam::145411222814:role/ServiceCatalogProvisioningRole'
   }
   stages {
@@ -15,9 +14,14 @@ pipeline {
     stage('Zip Lambda code') {
       steps {
         sh '''
-        mkdir -p out
-        (cd cloud/app-domain/code/lambda/producer && zip -rq ../../../../out/lambda_producer.zip .)
-        (cd cloud/app-domain/code/lambda/consumer && zip -rq ../../../../out/lambda_consumer.zip .)
+          set -e
+          mkdir -p "$WORKSPACE/out"
+
+          cd "$WORKSPACE/cloud/app-domain/code/lambda/producer"
+          zip -rq "$WORKSPACE/out/lambda_producer.zip" .
+
+          cd "$WORKSPACE/cloud/app-domain/code/lambda/consumer"
+          zip -rq "$WORKSPACE/out/lambda_consumer.zip" .
         '''
       }
     }
@@ -26,7 +30,6 @@ pipeline {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
           sh """
-          # upload product templates
           aws s3 cp cloud/app-domain/products/product-sns-topic/product_template.yaml        s3://$ARTIFACT_BUCKET/products/product-sns-topic/product_template.yaml
           aws s3 cp cloud/app-domain/products/product-sqs-queue/product_template.yaml        s3://$ARTIFACT_BUCKET/products/product-sqs-queue/product_template.yaml
           aws s3 cp cloud/app-domain/products/product-lambda-fn/product_template.yaml        s3://$ARTIFACT_BUCKET/products/product-lambda-fn/product_template.yaml
@@ -34,10 +37,10 @@ pipeline {
           aws s3 cp cloud/app-domain/products/product-stepfn/product_template.yaml           s3://$ARTIFACT_BUCKET/products/product-stepfn/product_template.yaml
           aws s3 cp cloud/app-domain/products/product-eventbridge-rule/product_template.yaml s3://$ARTIFACT_BUCKET/products/product-eventbridge-rule/product_template.yaml
 
-          # upload code
-          aws s3 cp cloud/app-domain/code/glue/elt_job.py s3://$ARTIFACT_BUCKET/code/glue/elt_job.py
-          aws s3 cp out/lambda_producer.zip s3://$ARTIFACT_BUCKET/code/lambda_producer.zip
-          aws s3 cp out/lambda_consumer.zip s3://$ARTIFACT_BUCKET/code/lambda_consumer.zip
+          # code
+          aws s3 cp "$WORKSPACE/out/lambda_producer.zip"  s3://$ARTIFACT_BUCKET/code/lambda_producer.zip
+          aws s3 cp "$WORKSPACE/out/lambda_consumer.zip"  s3://$ARTIFACT_BUCKET/code/lambda_consumer.zip
+          aws s3 cp cloud/app-domain/code/glue/elt_job.py s3://$ARTIFACT_BUCKET/code/elt_job.py
           """
         }
       }
