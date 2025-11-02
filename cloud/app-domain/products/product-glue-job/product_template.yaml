@@ -1,52 +1,67 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "SC Product - Glue job for ETL"
+Description: "SC Product - Create a simple AWS Glue Job (Spark) using script from S3"
 
 Parameters:
-  JobName:        { Type: String, Default: etl-job }
-  ScriptS3Bucket: { Type: String }
-  ScriptS3Key:    { Type: String }
-  TempS3Bucket:   { Type: String }
-  GlueVersion:    { Type: String, Default: "4.0" }
-  WorkerType:     { Type: String, Default: G.1X }
-  NumberOfWorkers:{ Type: Number, Default: 2 }
+  GlueJobName:
+    Type: String
+    Default: "sc-glue-demo-job"
+    Description: Name of the Glue job to create
+
+  GlueRoleArn:
+    Type: String
+    Description: IAM role ARN for the Glue job to run as
+    # for PoC you can pass: arn:aws:iam::<ACCOUNT_ID>:role/AWSGlueServiceRole-Default
+
+  ScriptLocation:
+    Type: String
+    Description: S3 location of the Glue script (s3://bucket/path/script.py)
+    Default: "s3://my-cfn-artifacts-ap-south-1/code/elt_job.py"
+
+  GlueVersion:
+    Type: String
+    Default: "4.0"
+    AllowedValues:
+      - "3.0"
+      - "4.0"
+    Description: Glue version
+
+  NumberOfWorkers:
+    Type: Number
+    Default: 2
+    Description: Number of workers
+
+  WorkerType:
+    Type: String
+    Default: "G.1X"
+    AllowedValues:
+      - "Standard"
+      - "G.1X"
+      - "G.2X"
+    Description: Glue worker type
 
 Resources:
-  GlueRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement: [{ Effect: Allow, Principal: { Service: glue.amazonaws.com }, Action: sts:AssumeRole }]
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
-      Policies:
-        - PolicyName: GlueS3Access
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: [ "s3:GetObject","s3:PutObject","s3:ListBucket" ]
-                Resource:
-                  - !Sub "arn:aws:s3:::${ScriptS3Bucket}"
-                  - !Sub "arn:aws:s3:::${ScriptS3Bucket}/*"
-                  - !Sub "arn:aws:s3:::${TempS3Bucket}"
-                  - !Sub "arn:aws:s3:::${TempS3Bucket}/*"
-
   GlueJob:
     Type: AWS::Glue::Job
     Properties:
-      Name: !Ref JobName
-      Role: !GetAtt GlueRole.Arn
+      Name: !Ref GlueJobName
+      Role: !Ref GlueRoleArn
       GlueVersion: !Ref GlueVersion
       Command:
-        Name: glueetl
+        Name: "glueetl"
+        ScriptLocation: !Ref ScriptLocation
         PythonVersion: "3"
-        ScriptLocation: !Sub "s3://${ScriptS3Bucket}/${ScriptS3Key}"
-      DefaultArguments:
-        --TempDir: !Sub "s3://${TempS3Bucket}/glue-temp/"
-        --job-language: python
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      MaxRetries: 0
       WorkerType: !Ref WorkerType
       NumberOfWorkers: !Ref NumberOfWorkers
+      Description: "Glue job created via Service Catalog product"
+      DefaultArguments:
+        "--job-language": "python"
+        "--enable-continuous-cloudwatch-log": "true"
+        "--enable-metrics": "true"
 
 Outputs:
-  JobName: { Value: !Ref GlueJob }
+  GlueJobNameOut:
+    Description: Name of the Glue job created
+    Value: !Ref GlueJob
