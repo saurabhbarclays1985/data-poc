@@ -1,101 +1,139 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Provision data ETL components via Service Catalog"
+Description: "Provision SC products for app domain (SNS, SQS, Lambda, Glue, StepFn, EventBridge)"
 
 Parameters:
-  Env:            { Type: String, Default: dev }
-  Version:        { Type: String, Default: v1.0.0 }
-  ArtifactBucket: { Type: String, Default: my-cfn-artifacts-ap-south-1 }
+  Env:
+    Type: String
+    Default: dev
 
-  SnsProductId:    { Type: String }
-  SqsProductId:    { Type: String }
-  LambdaProductId: { Type: String }
-  GlueProductId:   { Type: String }
-  StepFnProductId: { Type: String }
-  EvbProductId:    { Type: String }
+  SnsProductId:
+    Type: String
+
+  SqsProductId:
+    Type: String
+
+  LambdaProductId:
+    Type: String
+
+  GlueProductId:
+    Type: String
+
+  StepFnProductId:
+    Type: String
+
+  EvbProductId:
+    Type: String
+
+  # most SC products need a PA name, we hardcode to v1 (same as portfolio)
+  ProvisioningArtifactName:
+    Type: String
+    Default: v1
+
+  # if your products (e.g. lambda / glue) need VPC or subnets, you can pass SSM names here
+  CoreVpcParam:
+    Type: String
+    Default: /core/vpc/id
+
+  CorePrivateSubnetParam:
+    Type: String
+    Default: /core/subnet/private/a
+
+  CorePublicSubnetParam:
+    Type: String
+    Default: /core/subnet/public/a
 
 Resources:
-  Sns:
+
+  # 1) SNS
+  ProvisionSns:
     Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
     Properties:
       ProductId: !Ref SnsProductId
+      ProvisioningArtifactName: !Ref ProvisioningArtifactName
       ProvisionedProductName: !Sub "sns-${Env}"
-      ProvisioningArtifactName: !Ref Version
       ProvisioningParameters:
-        - { Key: TopicName, Value: !Sub "etl-events-${Env}" }
+        - Key: TopicName
+          Value: !Sub "sns-${Env}"
 
-  Glue:
-    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
-    Properties:
-      ProductId: !Ref GlueProductId
-      ProvisionedProductName: !Sub "glue-${Env}"
-      ProvisioningArtifactName: !Ref Version
-      ProvisioningParameters:
-        - { Key: JobName,        Value: !Sub "etl-job-${Env}" }
-        - { Key: ScriptS3Bucket, Value: !Ref ArtifactBucket }
-        - { Key: ScriptS3Key,    Value: "code/glue/elt_job.py" }
-        - { Key: TempS3Bucket,   Value: !Ref ArtifactBucket }
-
-  StepFn:
-    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
-    DependsOn: [ Sns, Glue ]
-    Properties:
-      ProductId: !Ref StepFnProductId
-      ProvisionedProductName: !Sub "stepfn-${Env}"
-      ProvisioningArtifactName: !Ref Version
-      ProvisioningParameters:
-        - { Key: StateMachineName, Value: !Sub "etl-orchestrator-${Env}" }
-        - { Key: GlueJobName,      Value: !Sub "etl-job-${Env}" }
-        - { Key: SnsTopicArn,      Value: !GetAtt Sns.Outputs.TopicArn }
-
-  Evb:
-    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
-    DependsOn: StepFn
-    Properties:
-      ProductId: !Ref EvbProductId
-      ProvisionedProductName: !Sub "evb-${Env}"
-      ProvisioningArtifactName: !Ref Version
-      ProvisioningParameters:
-        - { Key: RuleName,           Value: !Sub "etl-nightly-${Env}" }
-        - { Key: StateMachineArn,    Value: !GetAtt StepFn.Outputs.StateMachineArn }
-        - { Key: ScheduleExpression, Value: "cron(30 20 * * ? *)" }
-
-  Sqs:
+  # 2) SQS
+  ProvisionSqs:
     Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
     Properties:
       ProductId: !Ref SqsProductId
+      ProvisioningArtifactName: !Ref ProvisioningArtifactName
       ProvisionedProductName: !Sub "sqs-${Env}"
-      ProvisioningArtifactName: !Ref Version
       ProvisioningParameters:
-        - { Key: QueueName,             Value: !Sub "etl-input-${Env}" }
-        - { Key: CreateSnsSubscription, Value: "true" }
-        - { Key: SnsTopicArn,           Value: !GetAtt Sns.Outputs.TopicArn }
+        - Key: QueueName
+          Value: !Sub "queue-${Env}"
 
-  LambdaProducer:
+  # 3) Lambda
+  ProvisionLambda:
     Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
     Properties:
       ProductId: !Ref LambdaProductId
-      ProvisionedProductName: !Sub "lambda-producer-${Env}"
-      ProvisioningArtifactName: !Ref Version
+      ProvisioningArtifactName: !Ref ProvisioningArtifactName
+      ProvisionedProductName: !Sub "lambda-${Env}"
       ProvisioningParameters:
-        - { Key: FunctionName, Value: !Sub "etl-producer-${Env}" }
-        - { Key: CodeS3Bucket, Value: !Ref ArtifactBucket }
-        - { Key: CodeS3Key,    Value: "code/lambda_producer.zip" }
-        - { Key: UseVpc,       Value: "false" }
+        - Key: FunctionName
+          Value: !Sub "lambda-${Env}"
+        - Key: CodeBucket
+          Value: "my-cfn-artifacts-ap-south-1"
+        - Key: CodeKey
+          Value: "code/lambda_producer.zip"
+        - Key: LambdaRoleArn
+          Value: "arn:aws:iam::145411222814:role/ServiceCatalogProvisioningRole"
 
-  LambdaConsumer:
+  # 4) Glue
+  ProvisionGlue:
     Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
-    DependsOn: Sqs
     Properties:
-      ProductId: !Ref LambdaProductId
-      ProvisionedProductName: !Sub "lambda-consumer-${Env}"
-      ProvisioningArtifactName: !Ref Version
+      ProductId: !Ref GlueProductId
+      ProvisioningArtifactName: !Ref ProvisioningArtifactName
+      ProvisionedProductName: !Sub "glue-${Env}"
       ProvisioningParameters:
-        - { Key: FunctionName, Value: !Sub "etl-consumer-${Env}" }
-        - { Key: CodeS3Bucket, Value: !Ref ArtifactBucket }
-        - { Key: CodeS3Key,    Value: "code/lambda_consumer.zip" }
-        - { Key: UseVpc,       Value: "false" }
-        - { Key: SqsQueueArn,  Value: !GetAtt Sqs.Outputs.QueueArn }
+        - Key: GlueJobName
+          Value: !Sub "glue-${Env}"
+        - Key: ScriptLocation
+          Value: "s3://my-cfn-artifacts-ap-south-1/code/elt_job.py"
+        - Key: GlueRoleArn
+          Value: "arn:aws:iam::145411222814:role/ServiceCatalogProvisioningRole"
+
+  # 5) Step Functions
+  ProvisionStepFn:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductId: !Ref StepFnProductId
+      ProvisioningArtifactName: !Ref ProvisioningArtifactName
+      ProvisionedProductName: !Sub "sfn-${Env}"
+      ProvisioningParameters:
+        - Key: StateMachineName
+          Value: !Sub "sc-sfn-${Env}"
+        - Key: RoleArn
+          Value: "arn:aws:iam::145411222814:role/ServiceCatalogProvisioningRole"
+
+  # 6) EventBridge
+  ProvisionEventBridge:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductId: !Ref EvbProductId
+      ProvisioningArtifactName: !Ref ProvisioningArtifactName
+      ProvisionedProductName: !Sub "evb-${Env}"
+      ProvisioningParameters:
+        - Key: RuleName
+          Value: !Sub "sc-every-5min-${Env}"
+        - Key: ScheduleExpression
+          Value: "rate(5 minutes)"
 
 Outputs:
-  SnsTopicArn:       { Value: !GetAtt Sns.Outputs.TopicArn }
-  StateMachineArn:   { Value: !GetAtt StepFn.Outputs.StateMachineArn }
+  SnsProvisionedId:
+    Value: !Ref ProvisionSns
+  SqsProvisionedId:
+    Value: !Ref ProvisionSqs
+  LambdaProvisionedId:
+    Value: !Ref ProvisionLambda
+  GlueProvisionedId:
+    Value: !Ref ProvisionGlue
+  StepFnProvisionedId:
+    Value: !Ref ProvisionStepFn
+  EvbProvisionedId:
+    Value: !Ref ProvisionEventBridge

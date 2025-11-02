@@ -2,8 +2,8 @@ pipeline {
   agent any
   environment {
     AWS_DEFAULT_REGION = 'ap-south-1'
-    PORTFOLIO_STACK = 'poc-data-portfolio-dev'
-    PROVISION_STACK = 'poc-data-provision-dev'
+    PORTFOLIO_STACK    = 'poc-data-portfolio-dev'
+    PROVISION_STACK    = 'poc-data-provision-dev'
   }
   stages {
     stage('Checkout') {
@@ -27,35 +27,58 @@ pipeline {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
           script {
             env.SNS_ID = sh(returnStdout: true, script: """
-              aws cloudformation describe-stacks --stack-name $PORTFOLIO_STACK \
+              aws cloudformation describe-stacks --stack-name ${PORTFOLIO_STACK} \
                 --query "Stacks[0].Outputs[?OutputKey=='SnsProductId'].OutputValue" \
                 --output text
             """).trim()
+
             env.SQS_ID = sh(returnStdout: true, script: """
-              aws cloudformation describe-stacks --stack-name $PORTFOLIO_STACK \
+              aws cloudformation describe-stacks --stack-name ${PORTFOLIO_STACK} \
                 --query "Stacks[0].Outputs[?OutputKey=='SqsProductId'].OutputValue" \
                 --output text
             """).trim()
+
             env.LBD_ID = sh(returnStdout: true, script: """
-              aws cloudformation describe-stacks --stack-name $PORTFOLIO_STACK \
+              aws cloudformation describe-stacks --stack-name ${PORTFOLIO_STACK} \
                 --query "Stacks[0].Outputs[?OutputKey=='LambdaProductId'].OutputValue" \
                 --output text
             """).trim()
+
             env.GLU_ID = sh(returnStdout: true, script: """
-              aws cloudformation describe-stacks --stack-name $PORTFOLIO_STACK \
+              aws cloudformation describe-stacks --stack-name ${PORTFOLIO_STACK} \
                 --query "Stacks[0].Outputs[?OutputKey=='GlueProductId'].OutputValue" \
                 --output text
             """).trim()
+
             env.SFN_ID = sh(returnStdout: true, script: """
-              aws cloudformation describe-stacks --stack-name $PORTFOLIO_STACK \
+              aws cloudformation describe-stacks --stack-name ${PORTFOLIO_STACK} \
                 --query "Stacks[0].Outputs[?OutputKey=='StepFnProductId'].OutputValue" \
                 --output text
             """).trim()
+
             env.EVB_ID = sh(returnStdout: true, script: """
-              aws cloudformation describe-stacks --stack-name $PORTFOLIO_STACK \
+              aws cloudformation describe-stacks --stack-name ${PORTFOLIO_STACK} \
                 --query "Stacks[0].Outputs[?OutputKey=='EvbProductId'].OutputValue" \
                 --output text
             """).trim()
+
+            // fail early if anything is blank
+            if (!env.SNS_ID || env.SNS_ID == "None")  error("SNS product id missing from portfolio")
+            if (!env.SQS_ID || env.SQS_ID == "None")  error("SQS product id missing from portfolio")
+            if (!env.LBD_ID || env.LBD_ID == "None")  error("Lambda product id missing from portfolio")
+            if (!env.GLU_ID || env.GLU_ID == "None")  error("Glue product id missing from portfolio")
+            if (!env.SFN_ID || env.SFN_ID == "None")  error("StepFn product id missing from portfolio")
+            if (!env.EVB_ID || env.EVB_ID == "None")  error("EventBridge product id missing from portfolio")
+
+            echo """
+            🟢 Product IDs read from stack ${PORTFOLIO_STACK}:
+              SNS  = ${env.SNS_ID}
+              SQS  = ${env.SQS_ID}
+              LAMBDA = ${env.LBD_ID}
+              GLUE   = ${env.GLU_ID}
+              STEP FN= ${env.SFN_ID}
+              EVB    = ${env.EVB_ID}
+            """
           }
         }
       }
@@ -66,16 +89,20 @@ pipeline {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
           sh """
           aws cloudformation deploy \
-            --stack-name $PROVISION_STACK \
+            --stack-name ${PROVISION_STACK} \
             --template-file cloud/app-provision/stacks/provision-dev.yml \
             --parameter-overrides \
-              file://cloud/app-provision/params/dev.json \
-              SnsProductId=$SNS_ID \
-              SqsProductId=$SQS_ID \
-              LambdaProductId=$LBD_ID \
-              GlueProductId=$GLU_ID \
-              StepFnProductId=$SFN_ID \
-              EvbProductId=$EVB_ID
+              Env=dev \
+              SnsProductId=${SNS_ID} \
+              SqsProductId=${SQS_ID} \
+              LambdaProductId=${LBD_ID} \
+              GlueProductId=${GLU_ID} \
+              StepFnProductId=${SFN_ID} \
+              EvbProductId=${EVB_ID} \
+              ProvisioningArtifactName=v1 \
+              CoreVpcParam=/core/vpc/id \
+              CorePrivateSubnetParam=/core/subnet/private/a \
+              CorePublicSubnetParam=/core/subnet/public/a
           """
         }
       }
@@ -84,7 +111,12 @@ pipeline {
     stage('Show outputs') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_default']]) {
-          sh "aws cloudformation describe-stacks --stack-name $PROVISION_STACK --query 'Stacks[0].Outputs' --output table"
+          sh """
+          aws cloudformation describe-stacks \
+            --stack-name ${PROVISION_STACK} \
+            --query 'Stacks[0].Outputs' \
+            --output table
+          """
         }
       }
     }
