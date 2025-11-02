@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "SC Product - EventBridge to trigger Step Functions"
+
+Parameters:
+  RuleName:          { Type: String, Default: etl-nightly }
+  StateMachineArn:   { Type: String }
+  ScheduleExpression: { Type: String, Default: "cron(30 20 * * ? *)" }
+
+Resources:
+  EventsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: events.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: StartExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - { Effect: Allow, Action: "states:StartExecution", Resource: !Ref StateMachineArn }
+
+  Rule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Ref RuleName
+      State: ENABLED
+      ScheduleExpression: !Ref ScheduleExpression
+      Targets:
+        - Id: Target1
+          Arn: !Ref StateMachineArn
+          RoleArn: !GetAtt EventsRole.Arn
+
+Outputs:
+  RuleArn: { Value: !GetAtt Rule.Arn }

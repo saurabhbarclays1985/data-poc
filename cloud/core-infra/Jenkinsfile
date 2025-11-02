@@ -1,0 +1,36 @@
+pipeline {
+  agent any
+  environment {
+    AWS_DEFAULT_REGION = 'ap-south-1'
+    CORE_STACK = 'poc-core-network-dev'
+    OUT_STACK  = 'poc-core-outputs-dev'
+  }
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+    stage('Deploy core network') {
+      steps {
+        sh """
+        aws cloudformation deploy \
+          --stack-name $CORE_STACK \
+          --template-file cloud/core-infra/templates/core-network.yml \
+          --parameter-overrides file://cloud/core-infra/params/dev.json
+        """
+      }
+    }
+    stage('Publish SSM') {
+      steps {
+        sh '''
+        VPC=$(aws cloudformation describe-stacks --stack-name poc-core-network-dev --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" --output text)
+        PUB=$(aws cloudformation describe-stacks --stack-name poc-core-network-dev --query "Stacks[0].Outputs[?OutputKey=='PublicSubnet1Id'].OutputValue" --output text)
+        PRI=$(aws cloudformation describe-stacks --stack-name poc-core-network-dev --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
+        aws cloudformation deploy \
+          --stack-name poc-core-outputs-dev \
+          --template-file cloud/core-infra/templates/core-outputs.yml \
+          --parameter-overrides VpcId=$VPC PublicSubnet1Id=$PUB PrivateSubnet1Id=$PRI
+        '''
+      }
+    }
+  }
+}

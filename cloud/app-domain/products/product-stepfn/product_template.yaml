@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "SC Product - Step Functions ETL Orchestrator"
+
+Parameters:
+  StateMachineName: { Type: String, Default: etl-orchestrator }
+  GlueJobName:      { Type: String }
+  SnsTopicArn:      { Type: String }
+
+Resources:
+  StepRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: states.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: AllowGlueAndSns
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - { Effect: Allow, Action: [ "glue:StartJobRun","glue:GetJobRun","glue:GetJobRuns" ], Resource: "*" }
+              - { Effect: Allow, Action: "sns:Publish", Resource: !Ref SnsTopicArn }
+
+  StateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Ref StateMachineName
+      RoleArn: !GetAtt StepRole.Arn
+      DefinitionString: !Sub |
+        {
+          "StartAt": "RunGlue",
+          "States": {
+            "RunGlue": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::glue:startJobRun.sync",
+              "Parameters": {
+                "JobName": "${GlueJobName}"
+              },
+              "Next": "Notify"
+            },
+            "Notify": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SnsTopicArn}",
+                "Message": "ETL completed"
+              },
+              "End": true
+            }
+          }
+        }
+
+Outputs:
+  StateMachineArn: { Value: !Ref StateMachine }

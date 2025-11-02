@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Portfolio for data engineering products"
+
+Parameters:
+  LaunchRoleArn: { Type: String }
+  UrlSns:  { Type: String }
+  UrlSqs:  { Type: String }
+  UrlLbd:  { Type: String }
+  UrlGlue: { Type: String }
+  UrlStep: { Type: String }
+  UrlEvb:  { Type: String }
+
+Resources:
+  Portfolio:
+    Type: AWS::ServiceCatalog::Portfolio
+    Properties:
+      DisplayName: "Data Eng Portfolio"
+      ProviderName: "Platform Team"
+
+  ProdSns:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: "SNS Topic"
+      Owner: "Platform Team"
+      ProvisioningArtifactParameters:
+        - Name: v1.0.0
+          Info: { LoadTemplateFromURL: !Ref UrlSns }
+
+  ProdSqs:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: "SQS Queue"
+      Owner: "Platform Team"
+      ProvisioningArtifactParameters:
+        - Name: v1.0.0
+          Info: { LoadTemplateFromURL: !Ref UrlSqs }
+
+  ProdLbd:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: "Lambda Function"
+      Owner: "Platform Team"
+      ProvisioningArtifactParameters:
+        - Name: v1.0.0
+          Info: { LoadTemplateFromURL: !Ref UrlLbd }
+
+  ProdGlue:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: "Glue Job"
+      Owner: "Platform Team"
+      ProvisioningArtifactParameters:
+        - Name: v1.0.0
+          Info: { LoadTemplateFromURL: !Ref UrlGlue }
+
+  ProdStep:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: "Step Functions Orchestrator"
+      Owner: "Platform Team"
+      ProvisioningArtifactParameters:
+        - Name: v1.0.0
+          Info: { LoadTemplateFromURL: !Ref UrlStep }
+
+  ProdEvb:
+    Type: AWS::ServiceCatalog::CloudFormationProduct
+    Properties:
+      Name: "EventBridge Trigger"
+      Owner: "Platform Team"
+      ProvisioningArtifactParameters:
+        - Name: v1.0.0
+          Info: { LoadTemplateFromURL: !Ref UrlEvb }
+
+  # Associate and apply launch role
+  A1: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSns } }
+  A2: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSqs } }
+  A3: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdLbd } }
+  A4: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdGlue } }
+  A5: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdStep } }
+  A6: { Type: AWS::ServiceCatalog::PortfolioProductAssociation, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdEvb } }
+
+  C1: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSns,  RoleArn: !Ref LaunchRoleArn } }
+  C2: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdSqs,  RoleArn: !Ref LaunchRoleArn } }
+  C3: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdLbd,  RoleArn: !Ref LaunchRoleArn } }
+  C4: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdGlue, RoleArn: !Ref LaunchRoleArn } }
+  C5: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdStep, RoleArn: !Ref LaunchRoleArn } }
+  C6: { Type: AWS::ServiceCatalog::LaunchRoleConstraint, Properties: { PortfolioId: !Ref Portfolio, ProductId: !Ref ProdEvb,  RoleArn: !Ref LaunchRoleArn } }
+
+Outputs:
+  PortfolioId:   { Value: !Ref Portfolio }
+  SnsProductId:  { Value: !Ref ProdSns }
+  SqsProductId:  { Value: !Ref ProdSqs }
+  LambdaProductId:{ Value: !Ref ProdLbd }
+  GlueProductId: { Value: !Ref ProdGlue }
+  StepFnProductId:{ Value: !Ref ProdStep }
+  EvbProductId:  { Value: !Ref ProdEvb }

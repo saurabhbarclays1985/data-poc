@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Core network (VPC, subnets, NAT)"
+
+Parameters:
+  VpcCidr:            { Type: String, Default: 10.30.0.0/16 }
+  PublicSubnet1Cidr:  { Type: String, Default: 10.30.10.0/24 }
+  PrivateSubnet1Cidr: { Type: String, Default: 10.30.20.0/24 }
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{Key: Name, Value: poc-vpc}]
+
+  IGW: { Type: AWS::EC2::InternetGateway }
+
+  AttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref IGW
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet1Cidr
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags: [{Key: Name, Value: poc-public-a}]
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1Cidr
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags: [{Key: Name, Value: poc-private-a}]
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    Properties: { Domain: vpc }
+
+  NatGw:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  RtPublic:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref VPC }
+
+  AssocPublic1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnet1, RouteTableId: !Ref RtPublic }
+
+  PubDefault:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RtPublic
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+
+  RtPrivate:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref VPC }
+
+  AssocPrivate1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnet1, RouteTableId: !Ref RtPrivate }
+
+  PriDefault:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RtPrivate
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGw
+
+Outputs:
+  VpcId:            { Value: !Ref VPC }
+  PublicSubnet1Id:  { Value: !Ref PublicSubnet1 }
+  PrivateSubnet1Id: { Value: !Ref PrivateSubnet1 }

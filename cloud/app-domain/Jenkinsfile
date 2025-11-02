@@ -1,0 +1,61 @@
+pipeline {
+  agent any
+  environment {
+    AWS_DEFAULT_REGION = 'ap-south-1'
+    ARTIFACT_BUCKET = 'my-cfn-artifacts-ap-south-1'
+    PORTFOLIO_STACK = 'poc-data-portfolio-dev'
+  }
+  stages {
+    stage('Checkout') { steps { checkout scm } }
+
+    stage('Zip Lambda code') {
+      steps {
+        sh '''
+        mkdir -p out
+        (cd cloud/app-domain/code/lambda/producer && zip -rq ../../../../out/lambda_producer.zip .)
+        (cd cloud/app-domain/code/lambda/consumer && zip -rq ../../../../out/lambda_consumer.zip .)
+        '''
+      }
+    }
+
+    stage('Upload artifacts') {
+      steps {
+        sh """
+        # upload product templates
+        aws s3 cp cloud/app-domain/products/product-sns-topic/product_template.yaml        s3://$ARTIFACT_BUCKET/products/product-sns-topic/product_template.yaml
+        aws s3 cp cloud/app-domain/products/product-sqs-queue/product_template.yaml        s3://$ARTIFACT_BUCKET/products/product-sqs-queue/product_template.yaml
+        aws s3 cp cloud/app-domain/products/product-lambda-fn/product_template.yaml        s3://$ARTIFACT_BUCKET/products/product-lambda-fn/product_template.yaml
+        aws s3 cp cloud/app-domain/products/product-glue-job/product_template.yaml         s3://$ARTIFACT_BUCKET/products/product-glue-job/product_template.yaml
+        aws s3 cp cloud/app-domain/products/product-stepfn/product_template.yaml           s3://$ARTIFACT_BUCKET/products/product-stepfn/product_template.yaml
+        aws s3 cp cloud/app-domain/products/product-eventbridge-rule/product_template.yaml s3://$ARTIFACT_BUCKET/products/product-eventbridge-rule/product_template.yaml
+
+        # upload code
+        aws s3 cp cloud/app-domain/code/glue/elt_job.py s3://$ARTIFACT_BUCKET/code/glue/elt_job.py
+        aws s3 cp out/lambda_producer.zip s3://$ARTIFACT_BUCKET/code/lambda_producer.zip
+        aws s3 cp out/lambda_consumer.zip s3://$ARTIFACT_BUCKET/code/lambda_consumer.zip
+        """
+      }
+    }
+
+    stage('Deploy portfolio') {
+      steps {
+        sh """
+        SNS_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-sns-topic/product_template.yaml
+        SQS_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-sqs-queue/product_template.yaml
+        LBD_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-lambda-fn/product_template.yaml
+        GLU_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-glue-job/product_template.yaml
+        SFN_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-stepfn/product_template.yaml
+        EVB_URL=https://s3.${AWS_DEFAULT_REGION}.amazonaws.com/$ARTIFACT_BUCKET/products/product-eventbridge-rule/product_template.yaml
+
+        aws cloudformation deploy \
+          --stack-name $PORTFOLIO_STACK \
+          --template-file cloud/app-domain/portfolio/portfolio.yml \
+          --parameter-overrides \
+            file://cloud/app-domain/params/portfolio.json \
+            UrlSns=$SNS_URL UrlSqs=$SQS_URL UrlLbd=$LBD_URL UrlGlue=$GLU_URL UrlStep=$SFN_URL UrlEvb=$EVB_URL \
+          --capabilities CAPABILITY_NAMED_IAM
+        """
+      }
+    }
+  }
+}

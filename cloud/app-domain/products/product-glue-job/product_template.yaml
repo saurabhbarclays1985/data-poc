@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "SC Product - Glue job for ETL"
+
+Parameters:
+  JobName:        { Type: String, Default: etl-job }
+  ScriptS3Bucket: { Type: String }
+  ScriptS3Key:    { Type: String }
+  TempS3Bucket:   { Type: String }
+  GlueVersion:    { Type: String, Default: "4.0" }
+  WorkerType:     { Type: String, Default: G.1X }
+  NumberOfWorkers:{ Type: Number, Default: 2 }
+
+Resources:
+  GlueRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: glue.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: GlueS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [ "s3:GetObject","s3:PutObject","s3:ListBucket" ]
+                Resource:
+                  - !Sub "arn:aws:s3:::${ScriptS3Bucket}"
+                  - !Sub "arn:aws:s3:::${ScriptS3Bucket}/*"
+                  - !Sub "arn:aws:s3:::${TempS3Bucket}"
+                  - !Sub "arn:aws:s3:::${TempS3Bucket}/*"
+
+  GlueJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref JobName
+      Role: !GetAtt GlueRole.Arn
+      GlueVersion: !Ref GlueVersion
+      Command:
+        Name: glueetl
+        PythonVersion: "3"
+        ScriptLocation: !Sub "s3://${ScriptS3Bucket}/${ScriptS3Key}"
+      DefaultArguments:
+        --TempDir: !Sub "s3://${TempS3Bucket}/glue-temp/"
+        --job-language: python
+      WorkerType: !Ref WorkerType
+      NumberOfWorkers: !Ref NumberOfWorkers
+
+Outputs:
+  JobName: { Value: !Ref GlueJob }

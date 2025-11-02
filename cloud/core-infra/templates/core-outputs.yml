@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Publish VPC/Subnets to SSM"
+
+Parameters:
+  VpcId:            { Type: String }
+  PublicSubnet1Id:  { Type: String }
+  PrivateSubnet1Id: { Type: String }
+
+Resources:
+  ParamVpc:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /core/vpc/id
+      Type: String
+      Value: !Ref VpcId
+
+  ParamPub:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /core/subnet/public/a
+      Type: String
+      Value: !Ref PublicSubnet1Id
+
+  ParamPri:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /core/subnet/private/a
+      Type: String
+      Value: !Ref PrivateSubnet1Id
+
+  ParamPriCsv:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /core/subnets/private/csv
+      Type: String
+      Value: !Ref PrivateSubnet1Id

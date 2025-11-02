@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "SC Product - SNS Topic"
+
+Parameters:
+  TopicName:
+    Type: String
+    Default: etl-events
+  AllowPublishRoleArn:
+    Type: String
+    Default: ""
+
+Resources:
+  Topic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref TopicName
+
+  TopicPolicy:
+    Condition: HasPublisher
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [ !Ref Topic ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSpecificRole
+            Effect: Allow
+            Principal: { AWS: !Ref AllowPublishRoleArn }
+            Action: sns:Publish
+            Resource: !Ref Topic
+
+Conditions:
+  HasPublisher: !Not [ !Equals [ !Ref AllowPublishRoleArn, "" ] ]
+
+Outputs:
+  TopicArn:
+    Value: !Ref Topic
+    Description: "SNS Topic ARN"

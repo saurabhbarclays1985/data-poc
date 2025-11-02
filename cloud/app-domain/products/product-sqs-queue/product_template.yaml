@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "SC Product - SQS Queue with DLQ and optional SNS subscription"
+
+Parameters:
+  QueueName: { Type: String, Default: etl-input-queue }
+  CreateSnsSubscription: { Type: String, AllowedValues: ["true","false"], Default: "false" }
+  SnsTopicArn: { Type: String, Default: "" }
+
+Resources:
+  Dlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${QueueName}-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  Queue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref QueueName
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt Dlq.Arn
+        maxReceiveCount: 5
+
+  QueuePolicy:
+    Condition: SubToSNS
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [ !Ref Queue ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSnsSend
+            Effect: Allow
+            Principal: "*"
+            Action: sqs:SendMessage
+            Resource: !GetAtt Queue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref SnsTopicArn
+
+  Sub:
+    Condition: SubToSNS
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SnsTopicArn
+      Protocol: sqs
+      Endpoint: !GetAtt Queue.Arn
+      RawMessageDelivery: true
+
+Conditions:
+  SubToSNS: !And
+    - !Equals [ !Ref CreateSnsSubscription, "true" ]
+    - !Not   [ !Equals [ !Ref SnsTopicArn, "" ] ]
+
+Outputs:
+  QueueArn: { Value: !GetAtt Queue.Arn }
+  QueueUrl: { Value: !Ref Queue }

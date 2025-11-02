@@ -1,0 +1,5 @@
+{
+  "Env": "dev",
+  "Version": "v1.0.0",
+  "ArtifactBucket": "my-cfn-artifacts-ap-south-1"
+}

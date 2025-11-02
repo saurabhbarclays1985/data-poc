@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Provision data ETL components via Service Catalog"
+
+Parameters:
+  Env:            { Type: String, Default: dev }
+  Version:        { Type: String, Default: v1.0.0 }
+  ArtifactBucket: { Type: String, Default: my-cfn-artifacts-ap-south-1 }
+
+  SnsProductId:    { Type: String }
+  SqsProductId:    { Type: String }
+  LambdaProductId: { Type: String }
+  GlueProductId:   { Type: String }
+  StepFnProductId: { Type: String }
+  EvbProductId:    { Type: String }
+
+Resources:
+  Sns:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductId: !Ref SnsProductId
+      ProvisionedProductName: !Sub "sns-${Env}"
+      ProvisioningArtifactName: !Ref Version
+      ProvisioningParameters:
+        - { Key: TopicName, Value: !Sub "etl-events-${Env}" }
+
+  Glue:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductId: !Ref GlueProductId
+      ProvisionedProductName: !Sub "glue-${Env}"
+      ProvisioningArtifactName: !Ref Version
+      ProvisioningParameters:
+        - { Key: JobName,        Value: !Sub "etl-job-${Env}" }
+        - { Key: ScriptS3Bucket, Value: !Ref ArtifactBucket }
+        - { Key: ScriptS3Key,    Value: "code/glue/elt_job.py" }
+        - { Key: TempS3Bucket,   Value: !Ref ArtifactBucket }
+
+  StepFn:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    DependsOn: [ Sns, Glue ]
+    Properties:
+      ProductId: !Ref StepFnProductId
+      ProvisionedProductName: !Sub "stepfn-${Env}"
+      ProvisioningArtifactName: !Ref Version
+      ProvisioningParameters:
+        - { Key: StateMachineName, Value: !Sub "etl-orchestrator-${Env}" }
+        - { Key: GlueJobName,      Value: !Sub "etl-job-${Env}" }
+        - { Key: SnsTopicArn,      Value: !GetAtt Sns.Outputs.TopicArn }
+
+  Evb:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    DependsOn: StepFn
+    Properties:
+      ProductId: !Ref EvbProductId
+      ProvisionedProductName: !Sub "evb-${Env}"
+      ProvisioningArtifactName: !Ref Version
+      ProvisioningParameters:
+        - { Key: RuleName,           Value: !Sub "etl-nightly-${Env}" }
+        - { Key: StateMachineArn,    Value: !GetAtt StepFn.Outputs.StateMachineArn }
+        - { Key: ScheduleExpression, Value: "cron(30 20 * * ? *)" }
+
+  Sqs:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductId: !Ref SqsProductId
+      ProvisionedProductName: !Sub "sqs-${Env}"
+      ProvisioningArtifactName: !Ref Version
+      ProvisioningParameters:
+        - { Key: QueueName,             Value: !Sub "etl-input-${Env}" }
+        - { Key: CreateSnsSubscription, Value: "true" }
+        - { Key: SnsTopicArn,           Value: !GetAtt Sns.Outputs.TopicArn }
+
+  LambdaProducer:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    Properties:
+      ProductId: !Ref LambdaProductId
+      ProvisionedProductName: !Sub "lambda-producer-${Env}"
+      ProvisioningArtifactName: !Ref Version
+      ProvisioningParameters:
+        - { Key: FunctionName, Value: !Sub "etl-producer-${Env}" }
+        - { Key: CodeS3Bucket, Value: !Ref ArtifactBucket }
+        - { Key: CodeS3Key,    Value: "code/lambda_producer.zip" }
+        - { Key: UseVpc,       Value: "false" }
+
+  LambdaConsumer:
+    Type: AWS::ServiceCatalog::CloudFormationProvisionedProduct
+    DependsOn: Sqs
+    Properties:
+      ProductId: !Ref LambdaProductId
+      ProvisionedProductName: !Sub "lambda-consumer-${Env}"
+      ProvisioningArtifactName: !Ref Version
+      ProvisioningParameters:
+        - { Key: FunctionName, Value: !Sub "etl-consumer-${Env}" }
+        - { Key: CodeS3Bucket, Value: !Ref ArtifactBucket }
+        - { Key: CodeS3Key,    Value: "code/lambda_consumer.zip" }
+        - { Key: UseVpc,       Value: "false" }
+        - { Key: SqsQueueArn,  Value: !GetAtt Sqs.Outputs.QueueArn }
+
+Outputs:
+  SnsTopicArn:       { Value: !GetAtt Sns.Outputs.TopicArn }
+  StateMachineArn:   { Value: !GetAtt StepFn.Outputs.StateMachineArn }
